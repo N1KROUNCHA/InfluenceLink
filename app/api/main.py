@@ -26,8 +26,8 @@ app = FastAPI(title="InfluenceLink API")
 app.add_middleware(
     CORSMiddleware,
     # allow_origin_regex="https://.*\.vercel\.app",
-    allow_origins=["*"], # Debugging: Allow ALL for now to fix connection
-    allow_credentials=True,
+    allow_origins=["*"], 
+    allow_credentials=False, # Must be False when using "*"
     allow_methods=["*"],
     allow_headers=["*"],
 )
