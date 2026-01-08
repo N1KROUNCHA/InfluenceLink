@@ -21,7 +21,7 @@ def build_brand_dna(data: dict):
         "region": data.get("target_region")
     }
 
-    db.brand_dna.update_one(
+    db.campaign_dna.update_one(
         {"campaign_id": data["campaign_id"]},
         {"$set": doc},
         upsert=True

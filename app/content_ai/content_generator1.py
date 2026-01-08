@@ -61,6 +61,7 @@ Return clean readable text.
     }
 
     try:
+        print(f"🚀 [Ollama] Calling {OLLAMA_URL} for model {MODEL}...")
         logger.info(f"Calling Ollama API: {OLLAMA_URL} with model: {MODEL}")
         logger.debug(f"Prompt length: {len(prompt)} characters")
         
@@ -73,6 +74,7 @@ Return clean readable text.
         
         # Check if the request was successful
         response.raise_for_status()
+        print(f"📥 [Ollama] Response status {response.status_code}. Reading stream...")
         logger.info(f"Ollama API responded with status: {response.status_code}")
         
         output = ""
@@ -179,3 +181,51 @@ Return clean readable text.
         error_msg = f"Unexpected error during content generation: {str(e)}"
         logger.error(error_msg, exc_info=True)
         return f"Error: {error_msg}"
+def generate_influencer_ideas(influencer, trends, user_prompt=None):
+    channel_name = influencer.get("channel_name") or "Creator"
+    category = influencer.get("category") or "general"
+    description = influencer.get("description") or ""
+
+    user_direction_block = ""
+    if user_prompt:
+        user_direction_block = f"\nUSER DIRECTION: The creator specifically wants to focus on: {user_prompt}\n"
+
+    prompt = f"""
+You are an expert YouTube growth strategist and talent manager.
+
+Creator Profile:
+- Name: {channel_name}
+- Category: {category}
+- Context: {description[:400]}
+{user_direction_block}
+Relevant Trends:
+{", ".join(trends) if trends else "general YouTube viral trends"}
+
+TASK:
+Generate 3 high-potential content ideas that will help this creator grow AND attract premium brand sponsorships.
+"""
+    if user_prompt:
+        prompt += f"Ensure the ideas align with the following direction: {user_prompt}\n"
+    
+    prompt += """
+For each idea include:
+1. Viral Title Idea
+2. Content Hook & Concept
+3. Brand Pitch (Why a brand would want to sponsor this specific video)
+
+Write in a motivating, professional tone. Return clean readable text.
+"""
+    # Reuse payload logic
+    payload = {
+        "model": MODEL,
+        "prompt": prompt,
+        "stream": False # Simple for studio
+    }
+    
+    try:
+        response = requests.post(OLLAMA_URL, json=payload, timeout=300)
+        response.raise_for_status()
+        return response.json().get("response", "AI was unable to generate ideas at this time.").strip()
+    except Exception as e:
+        logger.error(f"Creator Studio AI Error: {e}")
+        return f"Error: Failed to connect to AI engine. ({str(e)})"

@@ -48,7 +48,26 @@ def search_influencers(
     """
     
     cursor.execute(query, tuple(params))
-    influencers = cursor.fetchall()
+    influencer_rows = cursor.fetchall()
+
+    if not influencer_rows:
+        return {"count": 0, "influencers": []}
+
+    # Batch Fetch thumbnails from MongoDB
+    channel_ids = [row["channel_id"] for row in influencer_rows]
+    snippets = list(db.influencers_full.find(
+        {"channel_id": {"$in": channel_ids}},
+        {"channel_id": 1, "snippet.thumbnails": 1}
+    ))
+    
+    # Map for easy lookup
+    thumb_map = {s["channel_id"]: s.get("snippet", {}).get("thumbnails", {}) for s in snippets}
+
+    influencers = []
+    for row in influencer_rows:
+        inf = dict(row)
+        inf["thumbnails"] = thumb_map.get(row["channel_id"], {})
+        influencers.append(inf)
     
     return {
         "count": len(influencers),
@@ -69,9 +88,10 @@ def get_influencer_by_channel(channel_id: str):
     if not influencer:
         raise HTTPException(status_code=404, detail="Influencer not found")
     
-    # Get DNA data
+    # Get DNA and Full Data context
     influencer_id = influencer["influencer_id"]
     dna_doc = db.influencer_dna.find_one({"influencer_id": influencer_id})
+    full_doc = db.influencers_full.find_one({"channel_id": channel_id.strip()})
     
     result = dict(influencer)
     if dna_doc:
@@ -79,6 +99,13 @@ def get_influencer_by_channel(channel_id: str):
             "topics": dna_doc.get("topics", []),
             "style": dna_doc.get("style", ""),
             "has_embedding": "embedding" in dna_doc
+        }
+    
+    if full_doc:
+        result["youtube_meta"] = {
+            "snippet": full_doc.get("snippet", {}),
+            "statistics": full_doc.get("statistics", {}),
+            "brandingSettings": full_doc.get("brandingSettings", {})
         }
     
     return result
@@ -119,28 +146,45 @@ def find_similar_influencers(channel_id: str, top_k: int = 10):
 
     # Use a placeholder for each ID in the IN clause
     placeholders = ','.join(['%s'] * len(similar_ids))
+    
+    # 5. Fetch details and order by category match + original similarity sequence
+    # First, get the seed influencer's category
+    cursor.execute("SELECT category FROM influencers WHERE influencer_id = %s", (influencer_id,))
+    seed_cat = cursor.fetchone()["category"]
+
     query = f"""
         SELECT influencer_id, channel_id, channel_name, category, subscriber_count, engagement_score
         FROM influencers
         WHERE influencer_id IN ({placeholders})
+        ORDER BY FIELD(category, %s) DESC
     """
     
-    cursor.execute(query, tuple(similar_ids))
+    cursor.execute(query, tuple(similar_ids + [seed_cat]))
     similar_influencer_rows = cursor.fetchall()
 
     # Create a map of influencer_id to its similarity score
     similarity_map = {item['influencer_id']: item['similarity'] for item in similar_influencers_data}
 
+    # Batch Fetch thumbnails
+    channel_ids = [row["channel_id"] for row in similar_influencer_rows]
+    snippets = list(db.influencers_full.find(
+        {"channel_id": {"$in": channel_ids}},
+        {"channel_id": 1, "snippet.thumbnails": 1}
+    ))
+    thumb_map = {s["channel_id"]: s.get("snippet", {}).get("thumbnails", {}) for s in snippets}
+
     results = []
     for row in similar_influencer_rows:
         current_influencer_id = row["influencer_id"]
         results.append({
+            "influencer_id": current_influencer_id,
             "channel_id": row["channel_id"],
             "channel_name": row["channel_name"],
             "category": row["category"],
             "subscriber_count": row["subscriber_count"],
             "engagement_score": row["engagement_score"],
-            "similarity": similarity_map.get(current_influencer_id)
+            "similarity": similarity_map.get(current_influencer_id),
+            "thumbnails": thumb_map.get(row["channel_id"], {})
         })
 
     # Sort results by similarity score
@@ -162,8 +206,9 @@ def get_influencer(influencer_id: int):
     if not influencer:
         raise HTTPException(status_code=404, detail="Influencer not found")
     
-    # Get DNA data from MongoDB
+    # Get DNA and Full data from MongoDB
     dna_doc = db.influencer_dna.find_one({"influencer_id": influencer_id})
+    full_doc = db.influencers_full.find_one({"channel_id": influencer["channel_id"]})
     
     result = dict(influencer)
     if dna_doc:
@@ -173,12 +218,23 @@ def get_influencer(influencer_id: int):
             "has_embedding": "embedding" in dna_doc
         }
     
+    if full_doc:
+        result["youtube_meta"] = {
+            "snippet": full_doc.get("snippet", {}),
+            "statistics": full_doc.get("statistics", {}),
+            "brandingSettings": full_doc.get("brandingSettings", {})
+        }
+    
     return result
 
 @router.get("/{influencer_id}/roi")
 def get_roi_prediction(influencer_id: int):
     """Predict performance (views) for an influencer"""
-    cursor.execute("SELECT subscriber_count, engagement_score FROM influencers WHERE influencer_id=%s", (influencer_id,))
+    cursor.execute("""
+        SELECT subscriber_count, engagement_score, category, region, authenticity_score 
+        FROM influencers 
+        WHERE influencer_id=%s
+    """, (influencer_id,))
     row = cursor.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Influencer not found")
@@ -190,6 +246,6 @@ def get_roi_prediction(influencer_id: int):
     if not os.path.exists("models/roi_model.pkl"):
         train_roi_model()
         
-    prediction = predict_performance(row["subscriber_count"], row["engagement_score"])
+    prediction = predict_performance(row)
     
     return prediction

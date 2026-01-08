@@ -30,10 +30,10 @@ def extract_nlp_profile(text: str):
 
     sentiment = sia.polarity_scores(text)["compound"]
 
-    style = "motivational" if any(
+    style = "Informative" if any(
         k in text.lower()
-        for k in ["motivation", "fitness", "inspire", "hustle"]
-    ) else "neutral"
+        for k in ["learn", "how to", "science", "guide", "tutorial"]
+    ) else "Creative"
 
     region = "india" if "india" in text.lower() else "unknown"
 

@@ -17,6 +17,9 @@ from app.api.influencers import router as influencers_router
 from app.api.utils import router as utils_router
 from app.api.health import router as health_router
 
+from app.api.auth import router as auth_router
+from app.api.workflow import router as workflow_router
+
 app = FastAPI(title="InfluenceLink API")
 
 # CORS
@@ -34,59 +37,10 @@ app.include_router(content_router)
 app.include_router(influencers_router)
 app.include_router(utils_router)
 app.include_router(health_router)
+app.include_router(auth_router)
+app.include_router(workflow_router)
 
 
-@app.get("/")
-def root():
-    return {"status": "InfluenceLink backend running"}
-
-
-@app.get("/recommend/{campaign_id}")
-def recommend_influencers(campaign_id: int):
-    query = """
-        SELECT
-    r.normalized_score,
-    r.confidence_level,
-    i.channel_id,
-    i.channel_name,
-    c.title AS campaign_title,
-    e.explanation
-    FROM ranking_scores r
-    JOIN influencers i ON r.influencer_id = i.influencer_id
-    JOIN campaigns c ON r.campaign_id = c.campaign_id
-    LEFT JOIN ranking_explanations e
-    ON e.campaign_id = r.campaign_id
-    AND e.influencer_id = r.influencer_id
-    WHERE r.campaign_id = %s
-    ORDER BY r.normalized_score DESC
-    LIMIT 10
-
-    """
-
-    cursor.execute(query, (campaign_id,))
-    rows = cursor.fetchall()
-
-    if not rows:
-        raise HTTPException(status_code=404, detail="No recommendations found")
-
-    results = []
-    for idx, row in enumerate(rows, start=1):
-      results.append({
-    "rank": idx,
-    "score": float(row[0]) if row[0] else 0.0,
-    "confidence": float(row[1]) if row[1] else 0.0,
-    "channel_id": row[2],
-    "channel_name": row[3],
-    "campaign": row[4],
-    "why_recommended": row[5] or "Based on AI ranking"
-})
-
-
-
-    return {
-        "campaign_id": campaign_id,
-        "recommendations": results
-    }
 @app.get("/")
 def root():
     return {

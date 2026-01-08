@@ -10,7 +10,7 @@ export default function Influencers() {
     min_subscribers: '',
     max_subscribers: '',
     min_engagement: '',
-    limit: 2000,
+    limit: 50,
   })
 
   // Query state (what is actually sent to API)
@@ -139,13 +139,29 @@ export default function Influencers() {
           {data.influencers.map((influencer) => (
             <div key={influencer.influencer_id} className="card hover:shadow-lg transition-shadow">
               <div className="flex justify-between items-start mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">{influencer.channel_name}</h3>
+                <div className="flex items-center gap-3">
+                  {influencer.thumbnails?.default?.url ? (
+                    <img
+                      src={influencer.thumbnails.default.url}
+                      alt={influencer.channel_name}
+                      className="w-12 h-12 rounded-full border border-gray-100 shadow-sm object-cover"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 font-bold">
+                      {influencer.channel_name[0]}
+                    </div>
+                  )}
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900 leading-tight">{influencer.channel_name}</h3>
+                    <div className="text-xs text-gray-400 font-mono mt-0.5">{influencer.channel_id.substring(0, 12)}...</div>
+                  </div>
+                </div>
                 {influencer.brand_safety_score && (
-                  <span className={`px-2 py-1 text-xs font-semibold rounded-full ${influencer.brand_safety_score > 0.8 ? 'bg-green-100 text-green-800' :
+                  <span className={`px-2 py-1 text-[10px] font-black uppercase tracking-tight rounded-md ${influencer.brand_safety_score > 0.8 ? 'bg-green-100 text-green-800' :
                     influencer.brand_safety_score > 0.6 ? 'bg-yellow-100 text-yellow-800' :
                       'bg-red-100 text-red-800'
                     }`}>
-                    Safety: {(influencer.brand_safety_score * 100).toFixed(0)}%
+                    Safe: {(influencer.brand_safety_score * 100).toFixed(0)}%
                   </span>
                 )}
               </div>

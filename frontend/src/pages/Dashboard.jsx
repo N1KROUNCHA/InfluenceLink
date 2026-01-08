@@ -27,6 +27,28 @@ export default function Dashboard() {
 
   // Show error if API is not available
   if (campaignsError || healthError) {
+    const err = campaignsError || healthError
+    if (err?.response?.status === 401) {
+      // Redirect to login if unauthorized
+      // window.location.href = '/login' // DISABLE FOR DEBUGGING
+      return (
+        <div className="p-8 text-center">
+          <h2 className="text-2xl font-bold text-red-600">401 Unauthorized</h2>
+          <p>Your session is invalid or expired.</p>
+          <p className="text-sm font-mono mt-2">{err.message}</p>
+          <button
+            onClick={() => {
+              localStorage.removeItem('token');
+              window.location.href = '/login'
+            }}
+            className="btn btn-primary mt-4"
+          >
+            Clear Session & Login
+          </button>
+        </div>
+      )
+    }
+
     return (
       <div className="card">
         <div className="text-center py-8">
@@ -35,7 +57,12 @@ export default function Dashboard() {
             Could not connect to the API. Make sure your backend is running at http://127.0.0.1:8000
           </p>
           <p className="text-sm text-gray-500">
-            Error: {campaignsError?.message || healthError?.message || 'Unknown error'}
+            Error: {err?.message || 'Unknown error'}
+            {err?.response?.data?.detail && (
+              <span className="block mt-1 font-mono bg-red-50 p-1 rounded">
+                Server Message: {err.response.data.detail}
+              </span>
+            )}
           </p>
         </div>
       </div>
@@ -76,8 +103,8 @@ export default function Dashboard() {
           <div className="text-sm font-medium text-gray-500">System Status</div>
           <div className="mt-3">
             <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${health?.status === 'healthy'
-                ? 'bg-emerald-100 text-emerald-700'
-                : 'bg-red-100 text-red-700'
+              ? 'bg-emerald-100 text-emerald-700'
+              : 'bg-red-100 text-red-700'
               }`}>
               <span className={`w-2 h-2 mr-2 rounded-full ${health?.status === 'healthy' ? 'bg-emerald-500' : 'bg-red-500'
                 }`}></span>
@@ -121,8 +148,8 @@ export default function Dashboard() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2.5 py-0.5 text-xs font-bold rounded-full ${campaign.status === 'active' ? 'bg-emerald-100 text-emerald-700' :
-                          campaign.status === 'completed' ? 'bg-blue-100 text-blue-700' :
-                            'bg-gray-100 text-gray-700'
+                        campaign.status === 'completed' ? 'bg-blue-100 text-blue-700' :
+                          'bg-gray-100 text-gray-700'
                         }`}>
                         {campaign.status}
                       </span>

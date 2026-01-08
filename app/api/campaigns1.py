@@ -1,58 +1,52 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from app.db.mysql import cursor, conn, lock
 from app.agents.brand_dna.brand_dna_builder import build_brand_dna
 from app.aiml.build_campaign_training_data1 import build_campaign_training_data
 from app.aiml.train_campaign_match_model1 import train_campaign_model
 from app.aiml.predict_campaign_ranking1 import predict_campaign_ranking
+from app.api.auth import get_current_user
+from fastapi import BackgroundTasks
 
+from fastapi import APIRouter, HTTPException, Depends
+from app.api.auth import get_current_user
+from fastapi import BackgroundTasks
 
 router = APIRouter(prefix="/campaigns", tags=["Campaigns"])
 
-@router.post("/campaigns/create")
-def create_campaign(data: dict):
-
-    cursor.execute("""
-        INSERT INTO campaigns
-        (brand_id, title, category, target_region, required_style)
-        VALUES (%s, %s, %s, %s, %s)
-    """, (
-        data["brand_id"],
-        data["title"],
-        data["category"],
-        data["target_region"],
-        data["required_style"]
-    ))
-
-    campaign_id = cursor.lastrowid
-
-    return {
-        "message": "Campaign created successfully",
-        "campaign_id": campaign_id
-    }
-
-
-from fastapi import BackgroundTasks
-
 def run_campaign_ai(campaign_id: int, data: dict):
-    """Background task to run AI pipeline"""
+    """Background task to run AI analysis for a campaign"""
+    print(f"🤖 [AI] Starting analysis for Campaign {campaign_id}")
     try:
-        build_brand_dna({
-            "campaign_id": campaign_id,
-            "title": data["campaign_name"],
-            "category": data["category"],
-            "target_region": data["target_region"],
-            "required_style": data["required_style"]
-        })
-
-        build_campaign_training_data(campaign_id)
-        train_campaign_model()
-        predict_campaign_ranking(campaign_id)
-        print(f"✅ AI Ranking completed for Campaign {campaign_id}")
+        # 1. Build DNA (Embedding)
+        # We need to ensure 'campaign_id' is in data for the builder
+        data["campaign_id"] = campaign_id
+        build_brand_dna(data)
+        print(f"✅ [AI] DNA Built for Campaign {campaign_id}")
+        
+        # 2. Predict / Rank Influencers
+        # This will use the DNA we just built to find similar influencers via vector search (cold start)
+        # or use the trained model if we have data.
+        results = predict_campaign_ranking(campaign_id)
+        print(f"✅ [AI] Ranking Complete. Found {len(results)} matches.")
+        
     except Exception as e:
-        print(f"❌ AI Pipeline Failed: {str(e)}")
+        print(f"❌ [AI Error] Campaign {campaign_id}: {e}")
+        import traceback
+        traceback.print_exc()
+
+# Deprecated or simple create endpoint - let's secure it too if used, 
+# but the main one seems to be the one below with BackgroundTasks.
+# We will consolidate or just fix the used ones. 
+# The one at line 54 (@router.post("/create")) is likely the one used by frontend.
 
 @router.post("/create")
-def create_campaign(data: dict, background_tasks: BackgroundTasks):
+def create_campaign(data: dict, background_tasks: BackgroundTasks, current_user: dict = Depends(get_current_user)):
+    
+    if current_user["type"] != "brand":
+         raise HTTPException(status_code=403, detail="Only brands can create campaigns")
+
+    brand_id = current_user["user_id"]
+
     cursor.execute("""
         INSERT INTO campaigns (
             brand_id, title, category, budget,
@@ -63,7 +57,7 @@ def create_campaign(data: dict, background_tasks: BackgroundTasks):
         )
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'active')
     """, (
-        data["brand_id"],
+        brand_id,
         data["campaign_name"],
         data["category"],
         data["budget"],
@@ -88,14 +82,20 @@ def create_campaign(data: dict, background_tasks: BackgroundTasks):
     }
 
 @router.post("/{campaign_id}/rerank")
-def trigger_ranking(campaign_id: int, background_tasks: BackgroundTasks):
+def trigger_ranking(campaign_id: int, background_tasks: BackgroundTasks, current_user: dict = Depends(get_current_user)):
     """Manually trigger AI ranking"""
     # Fetch campaign data first to pass to DNA builder if needed
+    # Also verify ownership
     cursor.execute("SELECT * FROM campaigns WHERE campaign_id=%s", (campaign_id,))
     row = cursor.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Campaign not found")
-        
+    
+    # Check ownership (Bypass for Admin)
+    is_admin = current_user.get("email") == "srinidhikrouncha1956@gmail.com"
+    if not is_admin and current_user["type"] == "brand" and row["brand_id"] != current_user["user_id"]:
+         raise HTTPException(status_code=403, detail="Not authorized")
+
     data = {
         "campaign_name": row["title"],
         "category": row["category"],
@@ -108,26 +108,33 @@ def trigger_ranking(campaign_id: int, background_tasks: BackgroundTasks):
 
 
 @router.get("/list")
-def list_campaigns(status: str = None, limit: int = 50):
-    """List all campaigns with optional status filter"""
+def list_campaigns(status: str = None, limit: int = 50, current_user: dict = Depends(get_current_user)):
+    """List campaigns for the current user"""
     with lock:
-        if status:
-            cursor.execute("""
-                SELECT campaign_id, title, category, status, budget, created_at
-                FROM campaigns
-                WHERE status = %s
-                ORDER BY created_at DESC
-                LIMIT %s
-            """, (status, limit))
+        # Special Admin Access for specific user
+        if current_user.get("email") == "srinidhikrouncha1956@gmail.com":
+             # Show ALL campaigns for this super-user/admin
+             query = "SELECT campaign_id, title, category, status, budget, created_at FROM campaigns WHERE 1=1"
+             params = []
+        elif current_user["type"] == "brand":
+             # Strict isolation for other brands
+             query = "SELECT campaign_id, title, category, status, budget, created_at FROM campaigns WHERE brand_id = %s"
+             params = [current_user["user_id"]]
         else:
-            cursor.execute("""
-                SELECT campaign_id, title, category, status, budget, created_at
-                FROM campaigns
-                ORDER BY created_at DESC
-                LIMIT %s
-            """, (limit,))
-        
+             # Influencer view
+             query = "SELECT campaign_id, title, category, status, budget, created_at FROM campaigns WHERE status = 'active'"
+             params = []
+
+        if status:
+            query += " AND status = %s"
+            params.append(status)
+            
+        query += " ORDER BY created_at DESC LIMIT %s"
+        params.append(limit)
+
+        cursor.execute(query, tuple(params))
         campaigns = cursor.fetchall()
+        
     return {
         "count": len(campaigns),
         "campaigns": campaigns
@@ -241,10 +248,53 @@ def get_campaign_stats(campaign_id: int):
     }
 
 
+@router.get("/{campaign_id}/model-insights")
+def get_model_insights(campaign_id: int):
+    """Expose ML model performance and feature metrics for faculty project"""
+    import joblib
+    import os
+    
+    METRICS_PATH = "models/model_metrics.joblib"
+    if not os.path.exists(METRICS_PATH):
+        raise HTTPException(status_code=404, detail="Model metrics not yet generated. Please trigger a ranking first.")
+        
+    metrics = joblib.load(METRICS_PATH)
+    
+    # Check if this campaign has specific explanations
+    cursor.execute("""
+        SELECT i.channel_name, e.explanation, r.normalized_score
+        FROM ranking_explanations e
+        JOIN influencers i ON e.influencer_id = i.influencer_id
+        JOIN ranking_scores r ON (e.campaign_id = r.campaign_id AND e.influencer_id = r.influencer_id)
+        WHERE e.campaign_id = %s
+        ORDER BY r.normalized_score DESC
+        LIMIT 5
+    """, (campaign_id,))
+    top_explanations = cursor.fetchall()
+
+    return {
+        "model_type": "RandomForestRegressor (Scikit-Learn)",
+        "evaluation_metrics": {
+            "mean_squared_error": float(metrics["mse"]),
+            "r2_score": float(metrics["r2"]),
+            "total_training_samples": metrics["n_samples"]
+        },
+        "feature_importance": metrics["feature_importances"],
+        "top_match_explanations": [
+            {
+                "influencer": row["channel_name"],
+                "score": float(row["normalized_score"]),
+                "ai_reason": row["explanation"]
+            }
+            for row in top_explanations
+        ]
+    }
+
 @router.get("/recommend/{campaign_id}")
 def recommend(campaign_id: int):
     query = """
-        SELECT
+    SELECT 
+    r.influencer_id,
     r.normalized_score,
     r.confidence_level,
     i.channel_id,
@@ -260,8 +310,7 @@ def recommend(campaign_id: int):
     AND e.influencer_id = r.influencer_id
     WHERE r.campaign_id = %s
     ORDER BY r.normalized_score DESC
-    LIMIT 10
-
+    LIMIT 15
     """
 
     cursor.execute(query, (campaign_id,))
@@ -276,10 +325,15 @@ def recommend(campaign_id: int):
     
     results = []
     for idx, row in enumerate(rows, start=1):
+      # Cap score at 1.0 (100%) for UI sanity
+      raw_score = float(row["normalized_score"]) if row["normalized_score"] else 0.0
+      capped_score = min(1.0, raw_score)
+      
       results.append({
         "rank": idx,
-        "score": float(row["normalized_score"]) if row["normalized_score"] else 0.0,
-        "confidence": float(row["confidence_level"]) if row["confidence_level"] else 0.0,
+        "influencer_id": row["influencer_id"],
+        "score": capped_score,
+        "confidence": float(row["confidence_level"]) if row["confidence_level"] else 0.9,
         "channel_id": row["channel_id"],
         "channel_name": row["channel_name"],
         "brand_safety_score": float(row["brand_safety_score"]) if row["brand_safety_score"] else 1.0,

@@ -6,12 +6,12 @@ import { contentAPI, campaignsAPI } from '../services/api'
 export default function Content() {
   const { campaignId } = useParams()
   const [showHistory, setShowHistory] = useState(false)
-  
+
   const { data: campaign } = useQuery({
     queryKey: ['campaign', campaignId],
     queryFn: () => campaignsAPI.get(campaignId).then(res => res.data)
   })
-  
+
   const generateMutation = useMutation({
     mutationFn: () => contentAPI.generate(campaignId),
     onSuccess: () => {
@@ -22,13 +22,13 @@ export default function Content() {
       alert('Error generating content: ' + (error.response?.data?.content || error.message))
     },
   })
-  
+
   const { data: history, refetch: refetchHistory } = useQuery({
     queryKey: ['content-history', campaignId],
     queryFn: () => contentAPI.getHistory(campaignId).then(res => res.data),
     enabled: showHistory
   })
-  
+
   const { data: latest } = useQuery({
     queryKey: ['content-latest', campaignId],
     queryFn: () => contentAPI.getLatest(campaignId).then(res => res.data),
@@ -145,9 +145,10 @@ export default function Content() {
               <p className="text-gray-500 mb-4">No content generated yet</p>
               <button
                 onClick={() => generateMutation.mutate()}
+                disabled={generateMutation.isLoading}
                 className="btn btn-primary"
               >
-                Generate Content
+                {generateMutation.isLoading ? 'Generating...' : 'Generate Content'}
               </button>
             </div>
           )}
@@ -156,4 +157,3 @@ export default function Content() {
     </div>
   )
 }
-

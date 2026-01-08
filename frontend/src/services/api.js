@@ -10,6 +10,19 @@ const api = axios.create({
   },
 })
 
+// Add Auth Token Interceptor
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token')
+  console.log("Request Interceptor running. URL:", config.url)
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+    console.log("Attached Token:", token.substring(0, 10) + "...")
+  } else {
+    console.warn("No token found in localStorage!")
+  }
+  return config
+})
+
 // Campaigns API
 export const campaignsAPI = {
   list: (status = null, limit = 50) =>
@@ -57,6 +70,15 @@ export const influencersAPI = {
     api.get(`/influencers/${influencerId}/roi`),
 }
 
+// Auth API
+export const authAPI = {
+  login: (data) => api.post('/auth/login', data),
+  register: (data) => api.post('/auth/register', data),
+  onboard: (data) => api.post('/auth/influencer/onboard', data),
+  profile: () => api.get('/auth/profile'),
+  updateInfluencerProfile: (data) => api.put('/auth/influencer/profile', data)
+}
+
 // Content API
 export const contentAPI = {
   generate: (campaignId) =>
@@ -67,6 +89,15 @@ export const contentAPI = {
 
   getLatest: (campaignId) =>
     api.get(`/content/latest/${campaignId}`),
+
+  generateCreatorStudio: (influencerId, prompt = null) =>
+    api.get(`/content/creator-studio/${influencerId}`, { params: { prompt } }),
+
+  saveCreatorContent: (data) =>
+    api.post('/content/creator-studio/save', data),
+
+  getCreatorHistory: (influencerId, campaignId = null) =>
+    api.get(`/content/creator-studio/history/${influencerId}`, { params: { campaign_id: campaignId } }),
 }
 
 // Health API
@@ -78,5 +109,22 @@ export const healthAPI = {
     api.get('/health/detailed'),
 }
 
-export default api
+// Workflow API (CRM)
+export const workflowAPI = {
+  get: (campaignId) =>
+    api.get(`/workflow/${campaignId}`),
 
+  add: (campaignId, influencerId) =>
+    api.post(`/workflow/${campaignId}/add/${influencerId}`),
+
+  update: (campaignId, influencerId, data) =>
+    api.put(`/workflow/${campaignId}/update/${influencerId}`, data),
+
+  remove: (campaignId, influencerId) =>
+    api.delete(`/workflow/${campaignId}/remove/${influencerId}`),
+
+  getInfluencerWorkflow: (influencerId) =>
+    api.get(`/workflow/my-collaborations/${influencerId}`),
+}
+
+export default api
