@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Request, Response
 from app.db.mysql import cursor
 from fastapi import HTTPException
 import logging
@@ -22,16 +22,39 @@ from app.api.workflow import router as workflow_router
 
 app = FastAPI(title="InfluenceLink API")
 
-# CORS
-app.add_middleware(
-    CORSMiddleware,
-    # allow_origins=["*"], # DISABLED
-    allow_origin_regex=".*", # ALLOW ALL ORIGINS (Nuclear Option for Debugging)
-    allow_origins=[],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Manual CORS Middleware to fix persistent 400 Bad Request on OPTIONS
+@app.middleware("http")
+async def cors_handler(request: Request, call_next):
+    origin = request.headers.get("Origin")
+    
+    # Handle Preflight OPTIONS requests directly
+    if request.method == "OPTIONS":
+        response = Response()
+        response.headers["Access-Control-Allow-Origin"] = origin if origin else "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        return response
+
+    # Handle actual request
+    response = await call_next(request)
+    
+    # Add CORS headers to response
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    
+    return response
+
+# DISABLED Standard Middleware (It was raising 400 Bad Request)
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origin_regex=".*", 
+#     allow_origins=[],
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
 
 # Register routers
 app.include_router(campaigns_router)
