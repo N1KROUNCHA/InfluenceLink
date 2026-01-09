@@ -20,7 +20,7 @@ export default function InfluencerDashboard() {
 
     // Filter collaborations for stats
     const activeCollabs = collaborations?.filter(c => c.status !== 'completed' && c.status !== 'rejected') || []
-    const completedCollabs = collaborations?.filter(c => c.status === 'completed') || []
+    const completedCollabs = collaborations?.filter(c => c.status.toLowerCase() === 'completed') || []
 
     const stats = [
         { label: 'Active Collaborations', value: collabLoading ? '...' : activeCollabs.length, color: 'text-violet-600', bg: 'bg-violet-50' },
@@ -76,8 +76,8 @@ export default function InfluencerDashboard() {
                                         </div>
                                         <div className="text-right">
                                             <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${collab.status === 'negotiation' ? 'bg-amber-100 text-amber-700' :
-                                                    collab.status === 'content_creation' ? 'bg-blue-100 text-blue-700' :
-                                                        'bg-violet-100 text-violet-700'
+                                                collab.status === 'content_creation' ? 'bg-blue-100 text-blue-700' :
+                                                    'bg-violet-100 text-violet-700'
                                                 }`}>
                                                 {collab.status.replace('_', ' ')}
                                             </span>
