@@ -27,13 +27,16 @@ app = FastAPI(title="InfluenceLink API")
 async def cors_handler(request: Request, call_next):
     origin = request.headers.get("Origin")
     
+    print(f"DEBUG: Middleware received {request.method} from {origin}")
+    
     # Handle Preflight OPTIONS requests directly
     if request.method == "OPTIONS":
-        response = Response()
+        response = Response(status_code=200) # Explicitly set 200
         response.headers["Access-Control-Allow-Origin"] = origin if origin else "*"
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
         response.headers["Access-Control-Allow-Headers"] = "*"
         response.headers["Access-Control-Allow-Credentials"] = "true"
+        print("DEBUG: Returning manual OPTIONS response")
         return response
 
     # Handle actual request
