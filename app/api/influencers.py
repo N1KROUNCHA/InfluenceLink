@@ -61,7 +61,7 @@ def search_influencers(
     ))
     
     # Map for easy lookup
-    thumb_map = {s["channel_id"]: s.get("snippet", {}).get("thumbnails", {}) for s in snippets}
+    thumb_map = {s.get("channel_id"): s.get("snippet", {}).get("thumbnails", {}) for s in snippets if s.get("channel_id")}
 
     influencers = []
     for row in influencer_rows:
@@ -171,7 +171,7 @@ def find_similar_influencers(channel_id: str, top_k: int = 10):
         {"channel_id": {"$in": channel_ids}},
         {"channel_id": 1, "snippet.thumbnails": 1}
     ))
-    thumb_map = {s["channel_id"]: s.get("snippet", {}).get("thumbnails", {}) for s in snippets}
+    thumb_map = {s.get("channel_id"): s.get("snippet", {}).get("thumbnails", {}) for s in snippets if s.get("channel_id")}
 
     results = []
     for row in similar_influencer_rows:

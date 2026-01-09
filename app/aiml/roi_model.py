@@ -101,16 +101,18 @@ def predict_performance(influencer_data: dict):
     cat_val = influencer_data.get("category", "unknown")
     reg_val = influencer_data.get("region", "unknown")
     
+    # Helper for safe encoding
+    def safe_transform(encoder, value, default_value="unknown"):
+        if value in encoder.classes_:
+            return encoder.transform([value])[0]
+        if default_value in encoder.classes_:
+            return encoder.transform([default_value])[0]
+        # Extreme fallback: use the first known class (to prevent crash)
+        return encoder.transform([encoder.classes_[0]])[0]
+
     # Handle unseen labels for encoders
-    try:
-        cat_encoded = encoders["category"].transform([cat_val])[0]
-    except:
-        cat_encoded = encoders["category"].transform(["unknown"])[0]
-        
-    try:
-        reg_encoded = encoders["region"].transform([reg_val])[0]
-    except:
-        reg_encoded = encoders["region"].transform(["unknown"])[0]
+    cat_encoded = safe_transform(encoders["category"], cat_val)
+    reg_encoded = safe_transform(encoders["region"], reg_val)
 
     # Predict
     FEATURES = ["log_subscribers", "engagement_score", "category", "region", "authenticity_score"]
