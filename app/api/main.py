@@ -1,9 +1,23 @@
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 import traceback
-import logging
-
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger("uvicorn.error")
+
+# Routers
+from app.api.campaigns1 import router as campaigns_router
+from app.api.content1 import router as content_router
+from app.api.influencers import router as influencers_router
+from app.api.utils import router as utils_router
+from app.api.health import router as health_router
+from app.api.auth import router as auth_router
+from app.api.workflow import router as workflow_router
+
+app = FastAPI(title="InfluenceLink API")
 
 # Add TrustedHostMiddleware to allowing wildcard hosts (prevents 400 Bad Request on Host header)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["*"])
@@ -40,17 +54,7 @@ async def cors_handler(request: Request, call_next):
         # On error, try to pass through
         return await call_next(request)
 
-# DISABLED Standard Middleware (It was raising 400 Bad Request)
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origin_regex=".*", 
-#     allow_origins=[],
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
-
-# Register routers
+# Register routers (AFTER app init)
 app.include_router(campaigns_router)
 app.include_router(content_router)
 app.include_router(influencers_router)
