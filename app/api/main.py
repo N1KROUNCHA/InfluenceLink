@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 import traceback
+import logging
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
